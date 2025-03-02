@@ -44,6 +44,6 @@ describe('getExpiration', () => {
 
 describe('getResolve', () => {
   it('Should return absolute URL for relative path to static file.', () => {
-    expect(getResolve()).toEqual('https://www.mydummyurl.com/my.jpg');
+    expect(getResolve()).toEqual('https://www.mydummyurl.com/image.jpg');
   });
 });

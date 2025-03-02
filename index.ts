@@ -93,21 +93,54 @@ const createPropertyAssignmentValue = (key: string, value: any, context: Replace
         case "number":
             return ts.factory.createNumericLiteral(resolvedValue);
         case "string":
-            if (key === "resolve") {
-                return metaResolve(resolvedValue);
-            }
             return ts.factory.createStringLiteral(resolvedValue);
         case "boolean":
             return resolvedValue ? ts.factory.createTrue() : ts.factory.createFalse();
         case "object":
             return ts.factory.createObjectLiteralExpression(createImportMetaReplacement(resolvedValue, context));
+        case 'function':
+            if (key !== 'resolve') {
+                throw new Error(`Only resolve is supported as a function value. Received: '${key}'.`);
+            }
+            return metaResolve(resolvedValue);
         default:
             throw new Error(`Property '${key}': value '${resolvedValue}' type '${typeof resolvedValue}' is not supported.`);
     }
 };
 
+function convertCodeToArrowFunction(func: Function): ts.ArrowFunction {
+    const funcStr = func.toString();
+    // Wrap in parentheses to handle cases where the arrow function might be ambiguous
+    const wrappedSource = `(${funcStr})`;
+
+    const sourceFile = ts.createSourceFile(
+      'temp.ts',
+      wrappedSource,
+      ts.ScriptTarget.Latest,
+      true // setParentNodes
+    );
+
+    let foundArrowFunction: ts.ArrowFunction | undefined;
+
+    const visit = (node: ts.Node) => {
+        if (ts.isArrowFunction(node)) {
+            foundArrowFunction = node;
+            return;
+        }
+        ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(sourceFile, visit);
+
+    if (!foundArrowFunction) {
+        throw new Error('Arrow function not found in the provided code.');
+    } else {
+        return foundArrowFunction;
+    }
+}
+
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import.meta/resolve
-function metaResolve(resolvedValue: string): ts.ArrowFunction {
+function metaResolve(func: Function): ts.ArrowFunction {
+    const funcStr = func.toString();
     const parameters = [
         ts.factory.createParameterDeclaration(
           undefined, // modifiers
@@ -121,9 +154,10 @@ function metaResolve(resolvedValue: string): ts.ArrowFunction {
 
     // TODO: allow more complex bodies
     const returnStatement = ts.factory.createReturnStatement(
-      ts.factory.createStringLiteral(resolvedValue)
+      ts.factory.createStringLiteral(funcStr)
     );
     const bodyBlock = ts.factory.createBlock([returnStatement], true);
+    // const bodyBlock = ts.factory.createBlock([returnStatement], true);
 
     return ts.factory.createArrowFunction(
       undefined, // modifiers
